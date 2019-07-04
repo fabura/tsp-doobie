@@ -1,4 +1,6 @@
-import cats.effect.IO
+package com.example
+
+//import cats.effect.IO
 import com.dimafeng.testcontainers.PostgreSQLContainer
 import doobie.implicits._
 import doobie.util.ExecutionContexts
@@ -12,8 +14,8 @@ import scalaz.zio.interop.catz.taskConcurrentInstances
 
 object Main extends App{
 
-  val postgres = PostgreSQLContainer()
-  postgres.start()
+//  val postgres: PostgreSQLContainer = PostgreSQLContainer()
+//  postgres.start()
 
 
   type AppEnvironment = Clock
@@ -23,20 +25,27 @@ object Main extends App{
 
     val program: ZIO[Main.Environment, Throwable, Unit] = for {
 
-      blockingEC <- blocking.blockingExecutor.map(_.asEC).provide(Blocking.Live)
-      _ <- putStrLn("Yo")
+      container <-  IO.succeed(PostgreSQLContainer())
 
-      transactorR = Persistence.mkTransactor(postgres.driverClassName,
-        postgres.jdbcUrl, postgres.username, postgres.password)
+      _ <- IO.succeed(container.start())
+
+//      blockingEC <- blocking.blockingExecutor.map(_.asEC).provide(Blocking.Live)
+
+      _ <- putStrLn("Yo1")
+
+      transactorR = Persistence.mkTransactor(container.driverClassName,
+        container.jdbcUrl, container.username, container.password)
+
+      _ <- putStrLn("Yo2")
 
       operations = ZIO.runtime[AppEnvironment].flatMap { implicit rts =>
-        db.createTable
-        db.create(User(1, "Bulat"))
-        db.create(User(2, "Timur"))
-        db.create(User(3, "Vitaly"))
-
+        db.createTable *> {
+          db.create(User(1, "Bulat"))
+          db.create(User(2, "Timur"))
+          db.create(User(3, "Vitaly"))
+        }
       }
-
+      _ <- putStrLn("Yo3")
 
       program <- transactorR.use { transactor =>
         operations.provideSome[Environment] { _ =>
@@ -46,10 +55,13 @@ object Main extends App{
         }
       }
 
-
+      _ <- putStrLn("Yo4")
     } yield program
 
-    program.fold(_ => 1, _ => 0)
+    program.foldM(
+      err => putStrLn(s"Execution failed with: $err") *> IO.succeed(1),
+      _ => IO.succeed(0)
+    )
 
   }
 }
@@ -121,7 +133,6 @@ object Persistence {
                     pass: String
                   ): Managed[Throwable, Transactor[Task]] = {
 
-    implicit val cs = IO.contextShift(ExecutionContexts.synchronous)
     import scalaz.zio.interop.catz._
     val xa: Transactor[Task] =Transactor.fromDriverManager[Task](
       className,
