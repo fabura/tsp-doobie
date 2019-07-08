@@ -4,34 +4,55 @@ import com.dimafeng.testcontainers.PostgreSQLContainer
 import doobie.util.transactor.Transactor
 import scalaz.zio.Task
 import doobie.implicits._
+import fs2.Stream
 import scalaz.zio._
 import scalaz.zio.console._
 
 object Attemp2 extends App {
 
+  trait CSVHandle {
+    def withRows(cb: Either[Throwable, User] => Unit): Unit
+  }
+
+
   import scalaz.zio.interop.catz._
+  def getTransactor(container: PostgreSQLContainer): Transactor[Task] = Transactor.fromDriverManager[Task](
+    container.driverClassName,
+    container.jdbcUrl,
+    container.username,
+    container.password,
+  )
+
   val program = for {
-    container <-  IO.succeed(PostgreSQLContainer())
+    container   <- IO.effectTotal(PostgreSQLContainer())
+    _           <- IO.effectTotal(container.start())
+    xa          =  getTransactor(container)
+    dbInterface =  DatabaseInterface(xa)
+    _           <- dbInterface.createTable
+    _           <- dbInterface.create(User(1,"Anton"))
+    _           <- dbInterface.create(User(2,"Sergei"))
+    _           <- dbInterface.create(User(3,"Ivan"))
+    _           <- dbInterface.create(User(4,"John"))
+    anton       <- dbInterface.getAll
+//    _           <- putStrLn(anton.toString)
+    queue       <- Queue.bounded[Task[List[User]]](100)
+    _           <- queue.offer(dbInterface.getAllStream.take(2).compile.toList)
+    firstResult <- queue.take.foldM(err => Task.fail(err), res => Task.succeed(res))
+    proccess    <- firstResult.flatMap(k => putStrLn(k.toString)).fork.forever
 
-    _ <- IO.succeed(container.start())
 
-    xa = Transactor.fromDriverManager[Task](
-      container.driverClassName,
-      container.jdbcUrl,
-      container.username,
-      container.password,
-    )
-    databaseInterface = DatabaseInterface(xa)
-    _ <- databaseInterface.createTable
-    _ <- databaseInterface.create(User(1,"Anton"))
-    _ <- databaseInterface.create(User(2,"Sergey"))
-    anton <- databaseInterface.getAll
-    _    <- putStrLn(anton.toString)
+//    _           <- queue.offer(dbInterface.getAllStream.take(2).compile.toList)
+//    _           <- queue.offer(dbInterface.getAllStream.take(2).compile.toList)
+//    _           <- queue.offer(dbInterface.getAllStream.take(2).compile.toList)
+//    firstResult <- queue.take.foldM(err => Task.fail(err), res => Task.succeed(res))
+//    _           <- firstResult.flatMap(k => putStrLn(k.toString))
+
   } yield()
 
   override def run(args: List[String]): ZIO[Attemp2.Environment, Nothing, Int] = {
     program.fold(_ => 1, _ => 0)
   }
+
 }
 
 case class DatabaseInterface(tnx: Transactor[Task]) {
@@ -50,9 +71,8 @@ case class DatabaseInterface(tnx: Transactor[Task]) {
     sql"""SELECT * FROM USERS""".query[User].to[List].transact(tnx)
       .foldM(err => Task.fail(err), list => Task.succeed(list))
   }
-  def getAllStream: Task[List[User]] = {
-   fs2.Stream[Task, User] = sql"""SELECT * FROM USERS""".query[User].stream.transact(tnx)
-//      .foldM(err => Task.fail(err), list => Task.succeed(list))
+  def getAllStream: Stream[Task, User] = {
+     sql"""SELECT * FROM USERS""".query[User].stream.transact(tnx)
   }
 
   def create(user: User): Task[User] = {
@@ -63,4 +83,6 @@ case class DatabaseInterface(tnx: Transactor[Task]) {
     def apply(tnx: Transactor[Task]): DatabaseInterface = new DatabaseInterface(tnx)
   }
 }
+
+
 
