@@ -34,18 +34,15 @@ object Attemp2 extends App {
     _           <- dbInterface.create(User(3,"Ivan"))
     _           <- dbInterface.create(User(4,"John"))
     anton       <- dbInterface.getAll
-//    _           <- putStrLn(anton.toString)
-    queue       <- Queue.bounded[Task[List[User]]](100)
-    _           <- queue.offer(dbInterface.getAllStream.take(2).compile.toList)
-    firstResult <- queue.take.foldM(err => Task.fail(err), res => Task.succeed(res))
-    proccess    <- firstResult.flatMap(k => putStrLn(k.toString)).fork.forever
+    queue       <- Queue.bounded[User](100)
 
-
-//    _           <- queue.offer(dbInterface.getAllStream.take(2).compile.toList)
-//    _           <- queue.offer(dbInterface.getAllStream.take(2).compile.toList)
-//    _           <- queue.offer(dbInterface.getAllStream.take(2).compile.toList)
-//    firstResult <- queue.take.foldM(err => Task.fail(err), res => Task.succeed(res))
-//    _           <- firstResult.flatMap(k => putStrLn(k.toString))
+//    This line works - print users
+    _           <- dbInterface.getAllStream.evalMap(user => ZIO.effect(println(user))).compile.drain
+//    This line also works but seems like idle
+    _           <- dbInterface.getAllStream.evalMap(user => ZIO.effect(queue.offer(user))).compile.drain
+    queueData   <- queue.takeAll
+//    print empty List, idk why
+    _           <- putStrLn(queueData.mkString)
 
   } yield()
 
