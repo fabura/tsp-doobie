@@ -1,6 +1,7 @@
 package com.example
 
 import com.dimafeng.testcontainers.PostgreSQLContainer
+import com.example.Attemp2.{User, UserNotFound}
 import doobie.util.transactor.Transactor
 import scalaz.zio.Task
 import doobie.implicits._
@@ -10,10 +11,8 @@ import scalaz.zio.console._
 
 object Attemp2 extends App {
 
-  trait CSVHandle {
-    def withRows(cb: Either[Throwable, User] => Unit): Unit
-  }
-
+  case class User(id: Long, name: String)
+  case class UserNotFound(id: Int) extends Exception
 
   import scalaz.zio.interop.catz._
   def getTransactor(container: PostgreSQLContainer): Transactor[Task] = Transactor.fromDriverManager[Task](
@@ -23,8 +22,8 @@ object Attemp2 extends App {
     container.password,
   )
 
-  val program = for {
-    container   <- IO.effectTotal(PostgreSQLContainer())
+  val program: ZIO[Console, Throwable, Unit] = for {
+    container   <- ZIO(PostgreSQLContainer())
     _           <- IO.effectTotal(container.start())
     xa          =  getTransactor(container)
     dbInterface =  DatabaseInterface(xa)
@@ -33,15 +32,9 @@ object Attemp2 extends App {
     _           <- dbInterface.create(User(2,"Sergei"))
     _           <- dbInterface.create(User(3,"Ivan"))
     _           <- dbInterface.create(User(4,"John"))
-    anton       <- dbInterface.getAll
-    queue       <- Queue.bounded[User](100)
 
-//    This line works - print users
-    _           <- dbInterface.getAllStream.evalMap(user => ZIO.effect(println(user))).compile.drain
-//    This line also works but seems like idle
-    _           <- dbInterface.getAllStream.evalMap(user => ZIO.effect(queue.offer(user))).compile.drain
+    queue       <- dbInterface.getQueue(100)
     queueData   <- queue.takeAll
-//    print empty List, idk why
     _           <- putStrLn(queueData.mkString)
 
   } yield()
@@ -64,13 +57,22 @@ case class DatabaseInterface(tnx: Transactor[Task]) {
       .foldM(Task.fail, maybeUser => Task.require(UserNotFound(id))(Task.succeed(maybeUser)))
   }
 
-  def getAll: Task[List[User]] = {
+  def getAll(): Task[List[User]] = {
     sql"""SELECT * FROM USERS""".query[User].to[List].transact(tnx)
       .foldM(err => Task.fail(err), list => Task.succeed(list))
   }
-  def getAllStream: Stream[Task, User] = {
-     sql"""SELECT * FROM USERS""".query[User].stream.transact(tnx)
+
+  def getAllStream(): Stream[Task, User] = {
+    sql"""SELECT * FROM USERS""".query[User].stream.transact(tnx)
   }
+
+  def getQueue(queueCapacity: Int): Task[Queue[User]] = {
+    for {
+      queue <- Queue.bounded[User](queueCapacity)
+      _     <- getAllStream().evalMap(user => queue.offer(user).asInstanceOf[Task[Boolean]]).compile.drain
+    } yield queue
+  }
+
 
   def create(user: User): Task[User] = {
     sql"""INSERT INTO USERS (ID, NAME) VALUES (${user.id}, ${user.name})""".update.run
