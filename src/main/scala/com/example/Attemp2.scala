@@ -1,7 +1,6 @@
 package com.example
 
 import com.dimafeng.testcontainers.PostgreSQLContainer
-import com.example.Attemp2.{User, UserNotFound}
 import doobie.util.transactor.Transactor
 import scalaz.zio.Task
 import doobie.implicits._
@@ -11,21 +10,11 @@ import scalaz.zio.console._
 
 object Attemp2 extends App {
 
-  case class User(id: Long, name: String)
-  case class UserNotFound(id: Int) extends Exception
-
-  import scalaz.zio.interop.catz._
-  def getTransactor(container: PostgreSQLContainer): Transactor[Task] = Transactor.fromDriverManager[Task](
-    container.driverClassName,
-    container.jdbcUrl,
-    container.username,
-    container.password,
-  )
 
   val program: ZIO[Console, Throwable, Unit] = for {
     container   <- ZIO(PostgreSQLContainer())
     _           <- IO.effectTotal(container.start())
-    xa          =  getTransactor(container)
+    xa          =  DatabaseInterface.getTransactor(container)
     dbInterface =  DatabaseInterface(xa)
     _           <- dbInterface.createTable
     _           <- dbInterface.create(User(1,"Anton"))
@@ -78,10 +67,23 @@ case class DatabaseInterface(tnx: Transactor[Task]) {
     sql"""INSERT INTO USERS (ID, NAME) VALUES (${user.id}, ${user.name})""".update.run
       .transact(tnx).foldM(err => Task.fail(err), _ => Task.succeed(user))
   }
-  object DatabaseInterface {
-    def apply(tnx: Transactor[Task]): DatabaseInterface = new DatabaseInterface(tnx)
-  }
 }
+object DatabaseInterface {
+  import scalaz.zio.interop.catz._
+
+  def apply(tnx: Transactor[Task]): DatabaseInterface = new DatabaseInterface(tnx)
+
+  def getTransactor(container: PostgreSQLContainer): Transactor[Task] = Transactor.fromDriverManager[Task](
+    container.driverClassName,
+    container.jdbcUrl,
+    container.username,
+    container.password,
+  )
+}
+
+
+case class User(id: Long, name: String)
+case class UserNotFound(id: Int) extends Exception
 
 
 

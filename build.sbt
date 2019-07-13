@@ -19,6 +19,7 @@ lazy val hello = (project in file("."))
     libraryDependencies += "org.postgresql" % "postgresql" % "9.4-1206-jdbc42",
     libraryDependencies += "org.tpolecat" %% "doobie-core" % "0.7.0",
     libraryDependencies += "org.scalaz" %% "scalaz-zio" % ZIOVersion,
-    libraryDependencies += "org.scalaz" %% "scalaz-zio-interop-cats" % ZIOVersion,
+    libraryDependencies += "org.scalaz" %% "scalaz-zio-interop-cats" % ZIOVersion, 
+      libraryDependencies += "org.specs2" %% "specs2-core" % "4.6.0" % "test"
 
   )
