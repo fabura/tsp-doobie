@@ -1,16 +1,18 @@
 import com.dimafeng.testcontainers.PostgreSQLContainer
 import com.example.{DatabaseInterface, User}
 import org.specs2._
-import scalaz.zio.DefaultRuntime
-import scalaz.zio._
+import zio.DefaultRuntime
+import zio._
 
 
-class HelloWorldSpec extends Specification { def is = s2"""
+class HelloWorldSpec extends Specification {
+  def is = s2"""
 
  This is my first test
 
  This SQL query string should
    be equal 'User(1,Anton)User(2,Sergei)User(3,Ivan)User(4,John)'  $e1
+   This queue should contain 1kk elements                          $e2
                                                                  """
 
   val runtime: DefaultRuntime = new DefaultRuntime {}
@@ -33,5 +35,19 @@ class HelloWorldSpec extends Specification { def is = s2"""
     queueData   <- queue.takeAll
 
   } yield queueData.mkString
+
+  def e2 = runtime.unsafeRun(
+    for {
+      container   <- ZIO(PostgreSQLContainer())
+      _           <- IO.effectTotal(container.start())
+      xa          =  DatabaseInterface.getTransactor(container)
+      dbInterface =  DatabaseInterface(xa)
+      _           <- dbInterface.createTable
+      _           <- dbInterface.insertMany((1 to 1000000).toList.map(User(_, "Vasya")))
+
+      queue       <- dbInterface.getQueue(1000000)
+      queueData   <- queue.takeAll
+    } yield queueData.size must_== 1000000
+  )
 
 }

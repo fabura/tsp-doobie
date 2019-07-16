@@ -1,12 +1,15 @@
 package com.example
 
 import com.dimafeng.testcontainers.PostgreSQLContainer
+import doobie.free.connection.ConnectionIO
 import doobie.util.transactor.Transactor
-import scalaz.zio.Task
+import zio.Task
 import doobie.implicits._
+import doobie.util.update.Update
 import fs2.Stream
-import scalaz.zio._
-import scalaz.zio.console._
+import zio._
+import zio.console._
+
 
 object Attemp2 extends App {
 
@@ -17,14 +20,27 @@ object Attemp2 extends App {
     xa          =  DatabaseInterface.getTransactor(container)
     dbInterface =  DatabaseInterface(xa)
     _           <- dbInterface.createTable
-    _           <- dbInterface.create(User(1,"Anton"))
-    _           <- dbInterface.create(User(2,"Sergei"))
-    _           <- dbInterface.create(User(3,"Ivan"))
-    _           <- dbInterface.create(User(4,"John"))
+//    _           <- dbInterface.create(User(1,"Anton"))
+//    _           <- dbInterface.create(User(2,"Sergei"))
+//    _           <- dbInterface.create(User(3,"Ivan"))
+//    _           <- dbInterface.create(User(4,"John"))
+//    _           <- dbInterface.insertMany(List(User(1,"Anton"), User(2,"Sergei"), User(3,"Ivan"), User(4,"John")))
 
-    queue       <- dbInterface.getQueue(100)
+//    _           = Stream.randomSeeded(1488).map(User(_, "Yo")).evalMap(user => dbInterface.create(user)).take(100).compile.drain
+//    qq           = Stream.randomSeeded(1488).map(User(_, "Yo"))
+//    _= Stream.eval(ZIO.effect(qq.map(user => dbInterface.create(user)))).compile.drain
+//    _ <- putStr(qq.mkString)
+
+    _           <- dbInterface.insertMany((1 to 100).toList.map(User(_, "Vasya")))
+
+    queue       <- dbInterface.getQueue(50)
     queueData   <- queue.takeAll
     _           <- putStrLn(queueData.mkString)
+
+//    queueData   <- queue.takeAll
+//    _           <- putStrLn(queueData.toString)
+
+
 
   } yield()
 
@@ -35,7 +51,9 @@ object Attemp2 extends App {
 }
 
 case class DatabaseInterface(tnx: Transactor[Task]) {
-  import scalaz.zio.interop.catz._
+  import zio.interop.catz._
+  import cats.implicits._
+
 
   val createTable: Task[Unit] =
     sql"""CREATE TABLE IF NOT EXISTS Users (id int PRIMARY KEY, name varchar)""".update
@@ -58,7 +76,7 @@ case class DatabaseInterface(tnx: Transactor[Task]) {
   def getQueue(queueCapacity: Int): Task[Queue[User]] = {
     for {
       queue <- Queue.bounded[User](queueCapacity)
-      _     <- getAllStream().evalMap(user => queue.offer(user).asInstanceOf[Task[Boolean]]).compile.drain
+      q     <- getAllStream().evalMap(user => queue.offer(user).fork.asInstanceOf[Task[Boolean]]).compile.drain
     } yield queue
   }
 
@@ -67,9 +85,15 @@ case class DatabaseInterface(tnx: Transactor[Task]) {
     sql"""INSERT INTO USERS (ID, NAME) VALUES (${user.id}, ${user.name})""".update.run
       .transact(tnx).foldM(err => Task.fail(err), _ => Task.succeed(user))
   }
+
+  def insertMany(ps: List[User]):  Task[List[User]] = {
+    val sql = "insert into users (id, name) values (?, ?)"
+    Update[User](sql).updateMany(ps).transact(tnx).foldM(err => Task.fail(err), _ => Task.succeed(ps))
+  }
+
 }
 object DatabaseInterface {
-  import scalaz.zio.interop.catz._
+  import zio.interop.catz._
 
   def apply(tnx: Transactor[Task]): DatabaseInterface = new DatabaseInterface(tnx)
 
