@@ -86,9 +86,10 @@ case class DatabaseInterface(tnx: Transactor[Task]) {
       .transact(tnx).foldM(err => Task.fail(err), _ => Task.succeed(user))
   }
 
-  def insertMany(ps: List[User]):  Task[List[User]] = {
+  def insertMany[T: Write](ps: List[T]):  Task[List[T]] = {
+    import cats.implicits._
     val sql = "insert into users (id, name) values (?, ?)"
-    Update[User](sql).updateMany(ps).transact(tnx).foldM(err => Task.fail(err), _ => Task.succeed(ps))
+    Update[T](sql).updateMany(ps).transact(tnx).foldM(err => Task.fail(err), _ => Task.succeed(ps))
   }
 
 }
