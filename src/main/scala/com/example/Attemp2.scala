@@ -5,6 +5,7 @@ import doobie.free.connection.ConnectionIO
 import doobie.util.transactor.Transactor
 import zio.Task
 import doobie.implicits._
+import doobie.util.Write
 import doobie.util.update.Update
 import fs2.Stream
 import zio._
@@ -32,8 +33,9 @@ object Attemp2 extends App {
 //    _ <- putStr(qq.mkString)
 
     _           <- dbInterface.insertMany((1 to 100).toList.map(User(_, "Vasya")))
-
+    _           <- ZIO.effect(Thread.sleep(2000))
     queue       <- dbInterface.getQueue(50)
+
     queueData   <- queue.takeAll
     _           <- putStrLn(queueData.mkString)
 
@@ -76,7 +78,7 @@ case class DatabaseInterface(tnx: Transactor[Task]) {
   def getQueue(queueCapacity: Int): Task[Queue[User]] = {
     for {
       queue <- Queue.bounded[User](queueCapacity)
-      q     <- getAllStream().evalMap(user => queue.offer(user).fork.asInstanceOf[Task[Boolean]]).compile.drain
+      _     <- getAllStream().evalMap(user => queue.offer(user).asInstanceOf[Task[Boolean]]).compile.drain.fork
     } yield queue
   }
 
