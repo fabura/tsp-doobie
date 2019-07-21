@@ -1,24 +1,24 @@
 import com.dimafeng.testcontainers.PostgreSQLContainer
-import doobie.free.connection.ConnectionIO
-import doobie.util.transactor.Transactor
-import zio.Task
 import doobie.implicits._
+import doobie.util.Write
+import doobie.util.transactor.Transactor
 import doobie.util.update.Update
 import fs2.Stream
-import zio._
 import zio.console._
-import doobie.util.Write
+import zio.{Task, _}
+import doobie.util.fragment.Fragment
 
 
 object Main extends App {
-
+  val tableValues: List[List[String]] = List(List("id", "int"), List("name", "varchar"))
+  val tableName: String = "Users"
 
   val program: ZIO[Console, Throwable, Unit] = for {
     container   <- ZIO(PostgreSQLContainer())
     _           <- IO.effectTotal(container.start())
     xa          =  DatabaseInterface.getTransactor(container)
     dbInterface =  DatabaseInterface(xa)
-    _           <- dbInterface.createTable
+    _           <- dbInterface.createTable(tableName, tableValues)
     //    _           <- dbInterface.create(User(1,"Anton"))
     //    _           <- dbInterface.create(User(2,"Sergei"))
     //    _           <- dbInterface.create(User(3,"Ivan"))
@@ -52,12 +52,15 @@ object Main extends App {
 
 case class DatabaseInterface(tnx: Transactor[Task]) {
   import zio.interop.catz._
-  import cats.implicits._
 
 
-  val createTable: Task[Unit] =
-    sql"""CREATE TABLE IF NOT EXISTS Users (id int PRIMARY KEY, name varchar)""".update
-      .run.transact(tnx).foldM(err => Task.fail(err), _ => Task.succeed(()))
+  def createTable(tableName: String, tableValues: List[List[String]]): Task[Unit] = {
+    val unpackedTableValues: List[String] = tableValues.map(value => value.mkString(" "))
+    val formattedTableValues: String = unpackedTableValues.mkString(",")
+    val statement = fr"CREATE TABLE IF NOT EXISTS" ++ Fragment.const(tableName) ++ fr"(" ++ Fragment.const(formattedTableValues) ++ fr")"
+
+    statement.update.run.transact(tnx).foldM(err => Task.fail(err), _ => Task.succeed(()))
+  }
 
   def get(id: Int): Task[User] = {
     sql"""SELECT * FROM USERS WHERE ID = $id""".query[User].option.transact(tnx)
