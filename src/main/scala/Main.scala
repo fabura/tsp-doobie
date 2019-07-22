@@ -1,18 +1,20 @@
-package com.example
-
 import com.dimafeng.testcontainers.PostgreSQLContainer
-import doobie.free.connection.ConnectionIO
-import doobie.util.transactor.Transactor
-import zio.Task
 import doobie.implicits._
-import doobie.util.Write
+import doobie.util.fragment.Fragment
+import doobie.util.transactor.Transactor
 import doobie.util.update.Update
+import doobie.util.Write
 import fs2.Stream
-import zio._
 import zio.console._
+import zio.{Task, _}
 
 
-object Attemp2 extends App {
+object Main extends App {
+  val tableValues: List[List[String]] = List(List("id", "int"), List("name", "varchar"))
+  val tableName: String = "Users"
+  val tableColumns: List[String] = List("id", "name")
+  val millionUsers: List[User] = (1 to 1000000).toList.map(User(_, "Vasya"))
+
 
 
   val program: ZIO[Console, Throwable, Unit] = for {
@@ -20,46 +22,33 @@ object Attemp2 extends App {
     _           <- IO.effectTotal(container.start())
     xa          =  DatabaseInterface.getTransactor(container)
     dbInterface =  DatabaseInterface(xa)
-    _           <- dbInterface.createTable
-//    _           <- dbInterface.create(User(1,"Anton"))
-//    _           <- dbInterface.create(User(2,"Sergei"))
-//    _           <- dbInterface.create(User(3,"Ivan"))
-//    _           <- dbInterface.create(User(4,"John"))
-//    _           <- dbInterface.insertMany(List(User(1,"Anton"), User(2,"Sergei"), User(3,"Ivan"), User(4,"John")))
+    _           <- dbInterface.createTable(tableName, tableValues)
+    _           <- dbInterface.insertMany(tableName, tableColumns, millionUsers)
 
-//    _           = Stream.randomSeeded(1488).map(User(_, "Yo")).evalMap(user => dbInterface.create(user)).take(100).compile.drain
-//    qq           = Stream.randomSeeded(1488).map(User(_, "Yo"))
-//    _= Stream.eval(ZIO.effect(qq.map(user => dbInterface.create(user)))).compile.drain
-//    _ <- putStr(qq.mkString)
-
-    _           <- dbInterface.insertMany((1 to 100).toList.map(User(_, "Vasya")))
-    _           <- ZIO.effect(Thread.sleep(2000))
     queue       <- dbInterface.getQueue(50)
-
     queueData   <- queue.takeAll
     _           <- putStrLn(queueData.mkString)
-
-//    queueData   <- queue.takeAll
-//    _           <- putStrLn(queueData.toString)
-
 
 
   } yield()
 
-  override def run(args: List[String]): ZIO[Attemp2.Environment, Nothing, Int] = {
+  override def run(args: List[String]): ZIO[Main.Environment, Nothing, Int] = {
     program.fold(_ => 1, _ => 0)
   }
 
 }
 
+
 case class DatabaseInterface(tnx: Transactor[Task]) {
   import zio.interop.catz._
-  import cats.implicits._
 
+  def createTable(tableName: String, tableValues: List[List[String]]): Task[Unit] = {
+    val unpackedTableValues: List[String] = tableValues.map(value => value.mkString(" "))
+    val formattedTableValues: String = unpackedTableValues.mkString(",")
+    val statement = fr"CREATE TABLE IF NOT EXISTS" ++ Fragment.const(tableName) ++ fr"(" ++ Fragment.const(formattedTableValues) ++ fr")"
 
-  val createTable: Task[Unit] =
-    sql"""CREATE TABLE IF NOT EXISTS Users (id int PRIMARY KEY, name varchar)""".update
-      .run.transact(tnx).foldM(err => Task.fail(err), _ => Task.succeed(()))
+    statement.update.run.transact(tnx).foldM(err => Task.fail(err), _ => Task.succeed(()))
+  }
 
   def get(id: Int): Task[User] = {
     sql"""SELECT * FROM USERS WHERE ID = $id""".query[User].option.transact(tnx)
@@ -78,20 +67,25 @@ case class DatabaseInterface(tnx: Transactor[Task]) {
   def getQueue(queueCapacity: Int): Task[Queue[User]] = {
     for {
       queue <- Queue.bounded[User](queueCapacity)
-      _     <- getAllStream().evalMap(user => queue.offer(user).asInstanceOf[Task[Boolean]]).compile.drain.fork
+      q     <- getAllStream().evalMap(user => queue.offer(user).fork.asInstanceOf[Task[Boolean]]).compile.drain
     } yield queue
   }
 
 
-  def create(user: User): Task[User] = {
+  def insertOne(user: User): Task[User] = {
     sql"""INSERT INTO USERS (ID, NAME) VALUES (${user.id}, ${user.name})""".update.run
       .transact(tnx).foldM(err => Task.fail(err), _ => Task.succeed(user))
   }
 
-  def insertMany[T: Write](ps: List[T]):  Task[List[T]] = {
+  /** batch update, https://tpolecat.github.io/doobie/docs/07-Updating.html */
+  def insertMany[T: Write](tableName: String, columns: List[String], values: List[T]):  Task[List[T]] = {
     import cats.implicits._
-    val sql = "insert into users (id, name) values (?, ?)"
-    Update[T](sql).updateMany(ps).transact(tnx).foldM(err => Task.fail(err), _ => Task.succeed(ps))
+
+    val formattedColNames: String = columns.mkString(",")
+    val numValues: String = columns.map(column => "?").mkString(", ")
+    val statement = s"INSERT INTO $tableName ($formattedColNames) values($numValues)"
+
+    Update[T](statement).updateMany(values).transact(tnx).foldM(err => Task.fail(err), _ => Task.succeed(values))
   }
 
 }

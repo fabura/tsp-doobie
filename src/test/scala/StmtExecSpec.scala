@@ -1,12 +1,10 @@
-package test.scala
-
 import java.sql.{DriverManager, Connection}
 
 import com.dimafeng.testcontainers.{PostgreSQLContainer, GenericContainer, ForAllTestContainer, MultipleContainers}
 
 import org.scalatest.FlatSpec
 
-class AppSpec extends FlatSpec with ForAllTestContainer {
+class StmtExecSpec extends FlatSpec with ForAllTestContainer {
 
   val postgres = PostgreSQLContainer()
   val clickhouse = GenericContainer("yandex/clickhouse-server:latest", exposedPorts = Seq(8123, 9000))
@@ -39,23 +37,4 @@ class AppSpec extends FlatSpec with ForAllTestContainer {
   }
 
   println(postgres.jdbcUrl)
-
-  //
-  //  "DockerComposeContainer" should "retrieve non-0 port for any of services" in {
-  //    Class.forName(postgres.driverClassName)
-  //    val connection = DriverManager.getConnection(postgres.jdbcUrl, postgres.username, postgres.password)
-  //
-  //    val preparedStatement = connection.prepareStatement(postgres.testQueryString)
-  //    try {
-  //      val resultSet = preparedStatement.executeQuery()
-  //      resultSet.next()
-  //      assert(1 == resultSet.getInt(1))
-  //      resultSet.close()
-  //    } finally {
-  //      preparedStatement.close()
-  //      connection.close()
-  //    }
-
-
-  //  }
 }
