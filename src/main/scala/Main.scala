@@ -23,26 +23,11 @@ object Main extends App {
     xa          =  DatabaseInterface.getTransactor(container)
     dbInterface =  DatabaseInterface(xa)
     _           <- dbInterface.createTable(tableName, tableValues)
-    //    _           <- dbInterface.create(User(1,"Anton"))
-    //    _           <- dbInterface.create(User(2,"Sergei"))
-    //    _           <- dbInterface.create(User(3,"Ivan"))
-    //    _           <- dbInterface.create(User(4,"John"))
-    //    _           <- dbInterface.insertMany(List(User(1,"Anton"), User(2,"Sergei"), User(3,"Ivan"), User(4,"John")))
-
-    //    _           = Stream.randomSeeded(1488).map(User(_, "Yo")).evalMap(user => dbInterface.create(user)).take(100).compile.drain
-    //    qq           = Stream.randomSeeded(1488).map(User(_, "Yo"))
-    //    _= Stream.eval(ZIO.effect(qq.map(user => dbInterface.create(user)))).compile.drain
-    //    _ <- putStr(qq.mkString)
-
     _           <- dbInterface.insertMany(tableName, tableColumns, millionUsers)
 
     queue       <- dbInterface.getQueue(50)
     queueData   <- queue.takeAll
     _           <- putStrLn(queueData.mkString)
-
-    //    queueData   <- queue.takeAll
-    //    _           <- putStrLn(queueData.toString)
-
 
 
   } yield()
@@ -56,7 +41,6 @@ object Main extends App {
 
 case class DatabaseInterface(tnx: Transactor[Task]) {
   import zio.interop.catz._
-
 
   def createTable(tableName: String, tableValues: List[List[String]]): Task[Unit] = {
     val unpackedTableValues: List[String] = tableValues.map(value => value.mkString(" "))
@@ -88,12 +72,12 @@ case class DatabaseInterface(tnx: Transactor[Task]) {
   }
 
 
-  def create(user: User): Task[User] = {
+  def insertOne(user: User): Task[User] = {
     sql"""INSERT INTO USERS (ID, NAME) VALUES (${user.id}, ${user.name})""".update.run
       .transact(tnx).foldM(err => Task.fail(err), _ => Task.succeed(user))
   }
 
-
+  /** batch update, https://tpolecat.github.io/doobie/docs/07-Updating.html */
   def insertMany[T: Write](tableName: String, columns: List[String], values: List[T]):  Task[List[T]] = {
     import cats.implicits._
 

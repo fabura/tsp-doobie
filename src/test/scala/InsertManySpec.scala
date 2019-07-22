@@ -30,10 +30,10 @@ class InsertManySpec extends Specification {
     xa          =  getTransactor(container)
     dbInterface =  DatabaseInterface(xa)
     _           <- dbInterface.createTable(tableName, tableValues)
-    _           <- dbInterface.create(User(1,"Anton"))
-    _           <- dbInterface.create(User(2,"Sergei"))
-    _           <- dbInterface.create(User(3,"Ivan"))
-    _           <- dbInterface.create(User(4,"John"))
+    _           <- dbInterface.insertOne(User(1,"Anton"))
+    _           <- dbInterface.insertOne(User(2,"Sergei"))
+    _           <- dbInterface.insertOne(User(3,"Ivan"))
+    _           <- dbInterface.insertOne(User(4,"John"))
 
     queue       <- dbInterface.getQueue(100)
     queueData   <- queue.takeAll
