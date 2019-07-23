@@ -32,36 +32,3 @@ object User {
   }
 
 }
-
-
-//
-//trait HasQueries[T] {
-//
-//  def createTableSql(): String
-//  def getSql(id: Int): String
-//  def getAllSql(): String
-//  def insertOneSql(t: T): String
-//  def insertManySql(list: List[T]): String
-//}
-//
-//
-//case class User(id: Long, name: String)
-//case class UserNotFound(id: Int) extends Exception
-//
-//
-//
-//object User {
-//  implicit def userQueries: HasQueries[User] = new HasQueries[User] {
-//    override def createTableSql(): String = "CREATE TABLE IF NOT EXISTS Users (id int PRIMARY KEY, name varchar)"
-//
-//    override def getSql(id: Int): String = s"SELECT * FROM USERS WHERE ID = $id"
-//
-//    override def getAllSql(): String = "SELECT * FROM USERS"
-//
-//    override def insertOneSql(user: User): String = s"INSERT INTO USERS (ID, NAME) VALUES (${user.id}, ${user.name})"
-//
-//    override def insertManySql(list: List[User]): String =  "insert into users (id, name) values (?, ?)"
-//
-//  }
-//
-//}

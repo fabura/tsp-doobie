@@ -4,39 +4,8 @@ import doobie.util.{Read, Write}
 import doobie.util.transactor.Transactor
 import doobie.util.update.Update
 import fs2.Stream
-import zio.console._
 import zio.{Task, _}
 
-object Main extends App {
-  val tableValues: List[List[String]] = List(List("id", "int"), List("name", "varchar"))
-  val tableName: String = "Users"
-  val tableColumns: List[String] = List("id", "name")
-  val millionUsers: List[User] = (1 to 100).toList.map(User(_, "Vasya"))
-
-
-
-  val program: ZIO[Console, Throwable, Unit] = for {
-    container   <- ZIO(PostgreSQLContainer())
-    _           <- IO.effectTotal(container.start())
-    xa          =  DatabaseInterface.getTransactor(container)
-    dbInterface =  DatabaseInterface(xa)
-    _           <- dbInterface.createTable[User]()
-    _           <- dbInterface.insertMany(millionUsers)
-
-    queue       <- dbInterface.getQueue[User](50)
-    firstEl     <- queue.take
-
-    queueData   <- queue.takeAll
-    _           <- putStrLn(firstEl.toString+queueData.mkString)
-
-
-  } yield()
-
-  override def run(args: List[String]): ZIO[Main.Environment, Nothing, Int] = {
-    program.fold(_ => 1, _ => 0)
-  }
-
-}
 
 
 case class DatabaseInterface(tnx: Transactor[Task]) {

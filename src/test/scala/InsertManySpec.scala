@@ -28,8 +28,7 @@ class InsertManySpec extends Specification {
       _           <- dbInterface.insertMany(millionUsers)
 
       queueData  <- dbInterface.getQueue[User](1000000).flatMap(queue => queue.takeAll)
-//      _           <- queue.take
-//      queueData   <- queue.takeAll
+
     } yield queueData.size === 1000000
   )
 
